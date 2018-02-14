@@ -27,6 +27,37 @@ app.get('/users', (req, res) => {
   res.json(users)
 })
 
+const url = require('url');
+const ErrorResponse = require('./dto/errorResponse');
+const fetch = require('node-fetch');
+
+function proxyByFetch(_config) {
+    return function (req, res) {
+        let newurl = `${_config.ES_HOST}/${_config.ES_INDEX}/_search?${(url.parse(req.url).query ? url.parse(req.url).query : '')}`;
+        console.info(`proxy target is ${newurl}`);
+        console.log(req.body);
+        fetch(newurl, {
+            method: 'POST',
+            body:    JSON.stringify(req.body),
+            headers: req.headers,
+            timeout: _config.ES_TIMEOUT ? _config.ES_TIMEOUT : 5000
+        })
+            .then(res => res.json())
+            .then(json => res.end(JSON.stringify(json)) /*res.json(json) todo not work for express but work for lambda*/)
+            .catch(err => {
+                console.warn(err);
+                res.status(500).json(new ErrorResponse('Elastic search service is down, pls try later.',
+                    [err]));
+            });
+
+    };
+}
+
+app.use('/search', proxyByFetch({
+    "ES_HOST":"http://esearch.versentdev.com.au:9200",
+    "ES_INDEX":"test-es-metadata-search"
+}));
+
 app.get('/users/:userId', (req, res) => {
   const user = getUser(req.params.userId)
 
